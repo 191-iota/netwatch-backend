@@ -88,12 +88,28 @@ fn main() -> Result<(), io::Error> {
                     }
                     count += 1;
                     if count > 50 {
-                        println!("Devices seen: {}", devices.len());
+                        print_tracking_table(&devices);
                         count = 0;
                     }
                 }
             }
             Err(e) => eprintln!("error: {}", e),
         }
+    }
+}
+
+fn print_tracking_table(map: &HashMap<MacAddr, Device>) {
+    print!("\x1B[2J\x1B[1;1H");
+    println!("NetWatch - tracking wlan0");
+    println!("------------------------------------------------");
+    println!("MAC                   IP                  Packets         Last Seen");
+    for (_, device) in map.iter() {
+        println!(
+            "{}     {}      {}  {:?}",
+            device.mac,
+            device.ip,
+            device.packet_count,
+            device.last_seen.elapsed().as_secs()
+        );
     }
 }
