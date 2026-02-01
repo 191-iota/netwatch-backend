@@ -38,6 +38,7 @@ fn main() -> Result<(), io::Error> {
 
     let mut devices: HashMap<MacAddr, Device> = HashMap::new();
     let mut count = 0;
+    let my_mac = found_interface.mac.unwrap();
 
     loop {
         match rx.next() {
@@ -45,15 +46,8 @@ fn main() -> Result<(), io::Error> {
                 let wrapped_packet = EthernetPacket::new(packet);
 
                 if let Some(p) = wrapped_packet {
-                    if p.get_ethertype() == EtherTypes::Ipv4 {
-                        let payload = Ipv4Packet::new(p.payload());
-                        if let Some(ipv4) = payload {
-                            println!(
-                                "ipv4 source: {} -- ipv4 dest: {}",
-                                ipv4.get_source(),
-                                ipv4.get_destination()
-                            );
-                        }
+                    if p.get_source() == my_mac {
+                        continue;
                     }
 
                     if devices.contains_key(&p.get_source()) {
@@ -71,11 +65,6 @@ fn main() -> Result<(), io::Error> {
                                     packet_count: 1,
                                     last_seen: Instant::now(),
                                 },
-                            );
-                            println!(
-                                "ipv4 source: {} -- ipv4 dest: {}",
-                                ipv4.get_source(),
-                                ipv4.get_destination()
                             );
                         }
                     }
