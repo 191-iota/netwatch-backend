@@ -3,6 +3,7 @@ use std::io;
 use pnet::datalink::Channel;
 use pnet::datalink::Config;
 use pnet::datalink::interfaces;
+use pnet::packet::ethernet::EthernetPacket;
 
 fn main() -> Result<(), io::Error> {
     let interfaces = interfaces();
@@ -22,7 +23,18 @@ fn main() -> Result<(), io::Error> {
 
     loop {
         match rx.next() {
-            Ok(packet) => println!("got packet: {} bytes", packet.len()),
+            Ok(packet) => {
+                let wrapped_packet = EthernetPacket::new(packet);
+
+                println!("got packet: {} bytes", packet.len());
+                if let Some(p) = wrapped_packet {
+                    println!(
+                        "packet source: {} -- packet dest: {}",
+                        p.get_source(),
+                        p.get_destination()
+                    );
+                }
+            }
             Err(e) => eprintln!("error: {}", e),
         }
     }
