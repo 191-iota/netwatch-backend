@@ -53,6 +53,7 @@ fn main() -> Result<(), io::Error> {
                     if p.get_source() == my_mac {
                         continue;
                     }
+
                     let payload = p.payload();
 
                     if let Some(ipv4) = Ipv4Packet::new(payload)
@@ -99,7 +100,13 @@ fn check_udp(ip_packet: Ipv4Packet, device: Option<&mut Device>) {
     let Ok(packet) = dns_parser::Packet::parse(udp.payload()) else {
         return;
     };
-
+    println!(
+        "UDP: {}:{} -> {}:{}",
+        ip_packet.get_source(),
+        udp.get_source(),
+        ip_packet.get_destination(),
+        udp.get_destination()
+    );
     if let Some(d) = device
         && udp.get_destination() == 53
     {
