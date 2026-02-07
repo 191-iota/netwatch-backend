@@ -169,53 +169,46 @@ fn check_tcp_packets(ip_packet: &Ipv4Packet, device: Option<&mut Device>) {
         let compresssion_methods_length = payload[pos];
         pos += 1 + compresssion_methods_length as usize;
 
-        // Skip the 2 size bytes representing extensions_length AND the 2 bytes for assigned value
-        // "server name" AND the 2 bytes of data length AND list entry size
-        pos += 8;
+        let extensions_length = u16::from_be_bytes([payload[pos], payload[pos + 1]]);
+        pos += 2;
 
-        // Type DNS
-        if payload[pos] == 0x00 {
-            let extensions_length = u16::from_be_bytes([payload[pos], payload[pos + 1]]);
-            pos += 2;
+        let extensions_end = pos + extensions_length as usize;
 
-            let extensions_end = pos + extensions_length as usize;
+        let mut sni: Option<String> = None;
 
-            let mut sni: Option<String> = None;
+        while pos + 4 <= extensions_end {
+            // Type is always a u16
+            let ext_type = u16::from_be_bytes([payload[pos], payload[pos + 1]]);
+            let ext_len = u16::from_be_bytes([payload[pos + 2], payload[pos + 3]]);
+            pos += 4;
 
-            while pos + 4 <= extensions_end {
-                // Type is always a u16
-                let ext_type = u16::from_be_bytes([payload[pos], payload[pos + 1]]);
-                let ext_len = u16::from_be_bytes([payload[pos + 2], payload[pos + 3]]);
-                pos += 4;
+            if ext_type == 0x0000 {
+                // We are now at the host type
 
-                if ext_type == 0x0000 {
-                    // We are now at the host type
+                // Skip: list_length(2) + name_type(1)
+                pos += 3;
 
-                    // Skip: list_length(2) + name_type(1)
-                    pos += 3;
+                let name_length = u16::from_be_bytes([payload[pos], payload[pos + 1]]);
 
-                    let name_length = u16::from_be_bytes([payload[pos], payload[pos + 1]]);
+                // Skip past the 2 bytes of name length
+                pos += 2;
 
-                    // Skip past the 2 bytes of name length
-                    pos += 2;
+                // Create a &[u8]; This automatically creates a fat pointer with a length to it
+                // and therefore satisfies the "Sized" traits requirements
+                let host_name = &payload[pos..pos + name_length as usize];
 
-                    // Create a &[u8]; This automatically creates a fat pointer with a length to it
-                    // and therefore satisfies the "Sized" traits requirements
-                    let host_name = &payload[pos..pos + name_length as usize];
-
-                    sni = Some(str::from_utf8(host_name).unwrap().to_string());
-                    if let Some(name) = &sni {
-                        println!("{}", name);
-                    }
-                    break;
-                } else {
-                    // Skip current extension
-                    pos += ext_len as usize;
+                sni = Some(str::from_utf8(host_name).unwrap().to_string());
+                if let Some(name) = &sni {
+                    println!("{}", name);
                 }
+                break;
+            } else {
+                // Skip current extension
+                pos += ext_len as usize;
             }
-            if let (Some(d), Some(sni)) = (device, sni) {
-                d.domains.insert(sni);
-            }
+        }
+        if let (Some(d), Some(sni)) = (device, sni) {
+            d.domains.insert(sni);
         }
     }
 }
