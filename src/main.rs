@@ -35,6 +35,8 @@ use self::app_state::Device;
 mod app_state;
 mod handlers;
 
+/// Initializes environment variables, app state, database, and starts
+/// the packet capture thread alongside the actix-web HTTP server.
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
@@ -61,6 +63,8 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
+
+// Registers anonymous (no-auth) route scopes.
 fn init_anon_scope(cfg: &mut web::ServiceConfig) {
     cfg.service(web::scope(""));
 }
@@ -146,6 +150,9 @@ fn init_db(app_state: web::Data<AppState>) -> web::Data<AppState> {
     app_state.clone()
 }
 
+/// Runs the blocking packet capture loop on a dedicated OS thread.
+/// Processes Ethernet → IPv4 → UDP (DNS) / TCP (TLS SNI).
+/// Flushes device state to SQLite every 50 packets.
 fn spawn_continuous_scan(app_state: web::Data<AppState>) -> Result<(), io::Error> {
     let interfaces = interfaces();
 
@@ -220,6 +227,8 @@ fn spawn_continuous_scan(app_state: web::Data<AppState>) -> Result<(), io::Error
     }
 }
 
+/// Batch upserts all devices and their DNS logs to SQLite
+/// within a single transaction for SD card efficiency.
 fn batch_upsert_entries(
     conn: &mut Connection,
     devices: &HashMap<IpAddr, Device>,
