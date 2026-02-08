@@ -25,7 +25,7 @@
 - [ ] Anomaly detection (baseline → deviation)
 
 ### Phase 5: Web Dashboard
-- [ ] REST API (axum)
+- [ ] REST API (actix)
 - [ ] Device list endpoint
 - [ ] Device detail endpoint
 - [ ] WebSocket for live updates

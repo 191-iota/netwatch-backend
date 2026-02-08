@@ -29,11 +29,14 @@ use pnet::util::MacAddr;
 use rusqlite::Connection;
 use rusqlite::params;
 
-use self::app_state::AppState;
-use self::app_state::Device;
+use self::handlers::get_device_by_ip;
+use self::handlers::get_devices;
+use self::models::AppState;
+use self::models::Device;
+use self::models::DeviceResponse;
 
-mod app_state;
 mod handlers;
+mod models;
 
 /// Initializes environment variables, app state, database, and starts
 /// the packet capture thread alongside the actix-web HTTP server.
@@ -66,13 +69,17 @@ async fn main() -> std::io::Result<()> {
 
 // Registers anonymous (no-auth) route scopes.
 fn init_anon_scope(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope(""));
+    cfg.service(
+        web::scope("")
+            .route("/api/devices", web::get().to(get_devices))
+            .route("/api/devices/{ip}", web::get().to(get_device_by_ip)),
+    );
 }
 
 fn setup_address() -> (String, String) {
     let host = env::var("HOST").unwrap_or_else(|_| {
-        log::warn!("Could not find HOST env, defaulting to 127.0.0.1");
-        "127.0.0.1".to_string()
+        log::warn!("Could not find HOST env, defaulting to 0.0.0.0");
+        "0.0.0.0".to_string()
     });
 
     let port = env::var("PORT").unwrap_or_else(|_| {
@@ -85,7 +92,7 @@ fn setup_address() -> (String, String) {
 
 async fn init_app_state() -> AppState {
     let conn = Connection::open("netwatch.db").expect("Failed initializing sqlite in");
-    let initial_state: Arc<Mutex<HashMap<IpAddr, app_state::Device>>> =
+    let initial_state: Arc<Mutex<HashMap<IpAddr, models::Device>>> =
         Arc::new(Mutex::new(HashMap::new()));
 
     AppState {
@@ -133,7 +140,7 @@ fn init_db(app_state: web::Data<AppState>) -> web::Data<AppState> {
 
         devices.insert(
             ip,
-            app_state::Device {
+            models::Device {
                 mac,
                 hostname,
                 ip,
@@ -225,47 +232,6 @@ fn spawn_continuous_scan(app_state: web::Data<AppState>) -> Result<(), io::Error
             Err(e) => eprintln!("error: {}", e),
         }
     }
-}
-
-/// Batch upserts all devices and their DNS logs to SQLite
-/// within a single transaction for SD card efficiency.
-fn batch_upsert_entries(
-    conn: &mut Connection,
-    devices: &HashMap<IpAddr, Device>,
-) -> rusqlite::Result<()> {
-    let tx = conn.transaction()?;
-    for device in devices.values() {
-        tx.execute(
-            "INSERT INTO devices (ip, mac, hostname, packet_count, first_seen, last_seen)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?5)
-            ON CONFLICT(ip) DO UPDATE SET
-            packet_count = ?4,
-            last_seen = ?5",
-            params![
-                device.ip.to_string(),
-                device.mac.to_string(),
-                device.hostname,
-                device.packet_count as i64,
-                device.last_seen
-            ],
-        )?;
-
-        for domain in device.domains.iter() {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
-
-            tx.execute(
-                "INSERT INTO dns_logs (ip, domain, timestamp)
-                VALUES (?1, ?2, ?3)",
-                params![device.ip.to_string(), domain, now],
-            )?;
-        }
-    }
-
-    tx.commit()?;
-    Ok(())
 }
 
 /// Parses a TLS ClientHello to extract the SNI (Server Name Indication) hostname.
@@ -387,4 +353,114 @@ fn check_udp(ip_packet: &Ipv4Packet, device: Option<&mut Device>) {
             d.domains.insert(domain_string);
         }
     }
+}
+
+/// Batch upserts all devices and their DNS logs to SQLite
+/// within a single transaction for SD card efficiency.
+fn batch_upsert_entries(
+    conn: &mut Connection,
+    devices: &HashMap<IpAddr, Device>,
+) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    for device in devices.values() {
+        tx.execute(
+            "INSERT INTO devices (ip, mac, hostname, packet_count, first_seen, last_seen)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+            ON CONFLICT(ip) DO UPDATE SET
+            packet_count = ?4,
+            last_seen = ?5",
+            params![
+                device.ip.to_string(),
+                device.mac.to_string(),
+                device.hostname,
+                device.packet_count as i64,
+                device.last_seen
+            ],
+        )?;
+
+        for domain in device.domains.iter() {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+
+            tx.execute(
+                "INSERT INTO dns_logs (ip, domain, timestamp)
+                VALUES (?1, ?2, ?3)",
+                params![device.ip.to_string(), domain, now],
+            )?;
+        }
+    }
+
+    tx.commit()?;
+    Ok(())
+}
+
+/// Batch upserts all devices and their DNS logs to SQLite
+/// within a single transaction for SD card efficiency.
+pub fn get_db_devices(conn: &mut Connection) -> rusqlite::Result<Vec<DeviceResponse>> {
+    let mut devices = Vec::new();
+    let mut stmt =
+        conn.prepare("SELECT ip, mac, hostname, packet_count, first_seen, last_seen FROM devices")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(DeviceResponse {
+            ip: row.get(0)?,
+            mac: row.get(1)?,
+            hostname: row.get(2)?,
+            packet_count: row.get(3)?,
+            first_seen: row.get(4)?,
+            last_seen: row.get(5)?,
+            domains: vec![],
+        })
+    })?;
+
+    for device in rows {
+        let mut device = device?;
+        let mut domain_stmt = conn.prepare("SELECT DISTINCT domain FROM dns_logs WHERE ip = ?1")?;
+        let domains: Vec<String> = domain_stmt
+            .query_map([&device.ip], |row| row.get(0))?
+            .filter_map(|d| d.ok())
+            .collect();
+        device.domains = domains;
+        devices.push(device);
+    }
+
+    Ok(devices)
+}
+
+pub fn get_db_device_by_ip(
+    conn: &mut Connection,
+    ip: String,
+) -> rusqlite::Result<Option<DeviceResponse>> {
+    // TODO: Implement
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT ip, mac, hostname, packet_count, first_seen, last_seen FROM devices WHERE ip = ?1",
+    )?;
+
+    let mut rows = stmt.query_map([&ip], |row| {
+        Ok(DeviceResponse {
+            ip: row.get(0)?,
+            mac: row.get(1)?,
+            hostname: row.get(2)?,
+            packet_count: row.get(3)?,
+            first_seen: row.get(4)?,
+            last_seen: row.get(5)?,
+            domains: vec![],
+        })
+    })?;
+
+    let Some(device) = rows.next() else {
+        return Ok(None);
+    };
+
+    let mut device = device?;
+
+    let mut domain_stmt = conn.prepare("SELECT DISTINCT domain FROM dns_logs WHERE ip = ?1")?;
+    let domains: Vec<String> = domain_stmt
+        .query_map([&ip], |row| row.get(0))?
+        .filter_map(|d| d.ok())
+        .collect();
+    device.domains = domains;
+
+    Ok(Some(device))
 }
