@@ -16,12 +16,12 @@
 ### Phase 3: Persistence
 - [X] SQLite schema for devices, events, DNS logs
 - [X] Write events to database
-- [ ] Query historical data
+- [X] Query historical data
 
 ### Phase 4: Threat Detection
-- [ ] Port scan detection
-- [ ] Known bad IP/domain blocklist
-- [ ] New device alerts
+- [X] Port scan detection
+- [X] Known bad IP/domain blocklist
+- [X] New device alerts
 - [ ] Anomaly detection (baseline → deviation)
 
 ### Phase 5: Web Dashboard
