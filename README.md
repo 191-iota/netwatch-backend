@@ -4,9 +4,9 @@ Network security monitor for Raspberry Pi. Captures raw packets, identifies devi
 
 Built from scratch in Rust including a hand-written TLS ClientHello parser for SNI extraction.
 
-## Architecture
+## Flowchart
 
-![System Architecture](assets/architecture.png)
+![System Flowchart](assets/flowchart.png)
 
 ## Features
 
