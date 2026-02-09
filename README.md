@@ -2,8 +2,11 @@
 
 Network security monitor for Raspberry Pi. Captures raw packets, identifies devices, logs DNS/TLS traffic, detects threats in real-time.
 
-Built from scratch in Rust — including a hand-written TLS ClientHello parser for SNI extraction.
+Built from scratch in Rust including a hand-written TLS ClientHello parser for SNI extraction.
 
+## Architecture
+
+![System Architecture](assets/architecture.svg)
 ## Features
 
 - Raw packet capture via pnet (Ethernet → IPv4 → TCP/UDP)
