@@ -1,46 +1,40 @@
 # NetWatch
 
-A lightweight network monitor for Raspberry Pi. Tracks devices, logs DNS queries, detects threats.
+Network security monitor for Raspberry Pi. Captures raw packets, identifies devices, logs DNS/TLS traffic, detects threats in real-time.
 
-## What It Does
+Built from scratch in Rust — including a hand-written TLS ClientHello parser for SNI extraction.
 
-- **Device Discovery** — Identifies devices by MAC, infers type from vendor + behavior
-- **Traffic Analytics** — Tracks DNS queries and connection patterns per device
-- **Threat Detection** — Flags port scans, suspicious destinations, anomalies
-- **Connection Graph** — Visualize what each device talks to
+## Features
 
-## Architecture
+- Raw packet capture via pnet (Ethernet → IPv4 → TCP/UDP)
+- Device tracking by IP with MAC vendor identification (IEEE OUI)
+- DNS query logging (port 53) and TLS SNI extraction (port 443)
+- Hostname resolution from dnsmasq DHCP leases
+- Threat detection: port scanning, domain blacklist, new device alerts, beaconing analysis
+- REST API (actix-web) for device list, device detail, alerts
+- WebSocket endpoint for real-time alert streaming
+- SQLite persistence for devices, DNS logs, and alerts
+- Automated cross-compilation and deployment to ARM
 
-![System Architecture](assets/flow-chart.png)
-
-## Requirements
-
-- Raspberry Pi (3/4/5 or Zero 2)
-- Rust 1.70+
-- Linux with raw socket access
-
-## Quick Start
-```bash
-# Build
-cargo build --release
-
-# Grant network capability (instead of running as root)
-sudo setcap cap_net_raw=eip target/release/netwatch
-
-# Run
-./target/release/netwatch --interface eth0
+## API
+```
+GET /api/devices          — all tracked devices with domains
+GET /api/devices/{ip}     — single device detail
+GET /api/alerts           — threat detection alerts
+WS  /ws/alerts            — live alert stream
 ```
 
 ## Deploy
 ```bash
-./deploy.sh  # cross-compiles and pushes to Pi
+./deploy.sh  # builds for aarch64, deploys to Pi, restarts service
 ```
 
-## Status
+## Requirements
 
-Work in progress. Current: packet capture + device tracking.
+- Raspberry Pi (tested on Pi 5)
+- Pi configured as network DHCP/DNS server (dnsmasq)
+- `cap_net_raw` capability or root for packet capture
 
 ## License
 
 MIT
-
